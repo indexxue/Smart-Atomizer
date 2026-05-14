@@ -1,0 +1,24 @@
+# STM32F103RCT6 Flash Partition Layout
+# Total: 256KB (0x40000), Base: 0x08000000
+
+0x08000000  ┌─────────────────┐
+            │   Bootloader    │  32KB (0x8000)
+0x08007FFF  ├─────────────────┤
+0x08008000  │                 │
+            │     APP-A       │  96KB (0x18000)  Primary application
+0x0801FFFF  ├─────────────────┤
+0x08020000  │                 │
+            │     APP-B       │  96KB (0x18000)  Backup / OTA target
+0x08037FFF  ├─────────────────┤
+0x08038000  │  NVS Sector 0   │  16KB (0x4000)
+0x0803BFFF  ├─────────────────┤
+0x0803C000  │  NVS Sector 1   │  16KB (0x4000)
+0x0803FFFF  └─────────────────┘
+            NVS total: 32KB (0x8000)
+
+# Summary
+#   Bootloader:  0x08000000 - 0x08007FFF
+#   APP-A:       0x08008000 - 0x0801FFFF  (entry for normal boot)
+#   APP-B:       0x08020000 - 0x08037FFF  (entry for OTA/rollback)
+#   Boot flag:   uint32 at 0x08037FFC = 0xAAAAAAAA => next boot from Bootloader -> APP-B (see boot_slot.h)
+#   NVS:         0x08038000 - 0x0803FFFF  (config/params, wear leveling)

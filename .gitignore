@@ -1,0 +1,39 @@
+# Keil MDK output
+*.o
+*.crf
+*.axf
+*.hex
+*.map
+*.lnp
+*.htm
+*.build_log.htm
+*.dep
+*.sct
+*_sct.Bak
+*.d
+*.bin
+
+# Debug/User config
+*.uvguix.*
+DebugConfig/
+
+# RTE generated
+RTE/
+
+# Temporary files
+*.cr$
+*.dbg
+*.bak
+
+# Specific for your project path
+MDK-ARM/Smart Atomizer/*.o
+MDK-ARM/Smart Atomizer/*.crf
+MDK-ARM/Smart Atomizer/*.axf
+MDK-ARM/Smart Atomizer/*.hex
+MDK-ARM/Smart Atomizer/*.map
+MDK-ARM/Smart Atomizer/*.lnp
+MDK-ARM/Smart Atomizer/*.htm
+MDK-ARM/Smart Atomizer/*.dep
+MDK-ARM/Smart Atomizer/*_sct.Bak
+MDK-ARM/Smart Atomizer/*.d
+MDK-ARM/Smart Atomizer/*.bin
