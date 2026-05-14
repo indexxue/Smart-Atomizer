@@ -69,5 +69,10 @@ void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 2 */
+#include "input.h"
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  input_pin_callback(GPIO_Pin);
+}
 /* USER CODE END 2 */

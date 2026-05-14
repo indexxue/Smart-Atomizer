@@ -20,6 +20,7 @@ typedef enum
     INPUT_EVT_DWS_R,
     INPUT_EVT_DWS_L,
     INPUT_EVT_WATER,
+    INPUT_EVT_OVERHEAT,
     INPUT_EVT_MAX,
 } input_evt_e;
 

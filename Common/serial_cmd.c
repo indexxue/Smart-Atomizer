@@ -1,6 +1,9 @@
 /**
  * @file    serial_cmd.c
  * @brief   UART command framework with registration and unified reply
+ *
+ * Used from Factory flow (e.g. Factory/start.c). Application firmware should not
+ * call serial_cmd_init / register_defaults so USART1 stays with ty_link (see Core/Src/freertos.c).
  */
 
 #include "serial_cmd.h"
@@ -517,6 +520,26 @@ static void cmd_proto(int argc, const char *argv[])
     proto_enter();
 }
 
+static void cmd_u1tx(int argc, const char *argv[])
+{
+    proto_cmd_tx(argc, argv);
+}
+
+static void cmd_u1rx(int argc, const char *argv[])
+{
+    proto_cmd_rx(argc, argv);
+}
+
+static void cmd_u1clr(int argc, const char *argv[])
+{
+    proto_cmd_clr(argc, argv);
+}
+
+static void cmd_u1xfer(int argc, const char *argv[])
+{
+    proto_cmd_xfer(argc, argv);
+}
+
 void serial_cmd_register_defaults(void)
 {
     serial_cmd_register("sn", cmd_sn, "usage: sn; sn:xxxxxxxxxx");
@@ -529,4 +552,8 @@ void serial_cmd_register_defaults(void)
     serial_cmd_register("i2c", cmd_i2c, "usage: i2c");
     serial_cmd_register("btn", cmd_btn, "usage: btn wake|up|down|left|right");
     serial_cmd_register("proto", cmd_proto, "enter proto mode; use exit in proto mode");
+    serial_cmd_register("u1tx", cmd_u1tx, "usage: u1tx <hh> <hh> ...");
+    serial_cmd_register("u1rx", cmd_u1rx, "usage: u1rx [n]");
+    serial_cmd_register("u1clr", cmd_u1clr, "usage: u1clr");
+    serial_cmd_register("u1xfer", cmd_u1xfer, "usage: u1xfer <wait_ms> <hh> ...");
 }

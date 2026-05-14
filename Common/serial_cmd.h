@@ -9,6 +9,9 @@
  *
  * Response format: "cmd:value\r\n" for success, "ng\r\n" for error.
  * Input "help" lists all registered commands and their help strings.
+ *
+ * Intended use: Factory firmware calls serial_cmd_init + register_defaults (see Factory/start.c).
+ * Application firmware should not call these so USART1 remains on ty_link (Core/Src/freertos.c).
  */
 
 #ifndef __SERIAL_CMD_H

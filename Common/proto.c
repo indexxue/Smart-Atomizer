@@ -1,6 +1,7 @@
 #include "proto.h"
 
 #include "serial_cmd.h"
+#include "ty_link.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "cmsis_os2.h"
@@ -21,6 +22,10 @@ static volatile uint16_t s_rx_head = 0U;
 static volatile uint16_t s_rx_tail = 0U;
 static uint8_t s_proto_active = 0U;
 static osThreadId_t s_proto_monitor_task = NULL;
+
+static volatile proto_uart_mode_t s_uart_mode = PROTO_UART_MODE_FACTORY;
+static proto_esp_rx_byte_fn s_esp_rx_fn = NULL;
+static void *s_esp_rx_user = NULL;
 
 #define PROTO_MONITOR_TASK_STACK_BYTES   (512U)
 #define PROTO_MONITOR_TASK_POLL_MS       (10U)
@@ -215,13 +220,23 @@ static bool proto_parse_inline_hex(const char *s, uint8_t *out, uint16_t *out_le
     return (n > 0U);
 }
 
-static bool proto_send(const uint8_t *data, uint16_t len)
+bool proto_uart1_send_timeout(const uint8_t *data, uint16_t len, uint32_t timeout_ms)
 {
     if (s_uart1 == NULL || data == NULL || len == 0U)
     {
         return false;
     }
-    return (HAL_UART_Transmit(s_uart1, (uint8_t *)data, len, SERIAL_CMD_TX_TIMEOUT_MS) == HAL_OK);
+    return (HAL_UART_Transmit(s_uart1, (uint8_t *)data, len, timeout_ms) == HAL_OK);
+}
+
+bool proto_uart1_send(const uint8_t *data, uint16_t len)
+{
+    return proto_uart1_send_timeout(data, len, SERIAL_CMD_TX_TIMEOUT_MS);
+}
+
+static bool proto_send(const uint8_t *data, uint16_t len)
+{
+    return proto_uart1_send(data, len);
 }
 
 static void proto_reply_hex(const char *cmd, const uint8_t *data, uint16_t len)
@@ -248,24 +263,79 @@ static void proto_reply_hex(const char *cmd, const uint8_t *data, uint16_t len)
     serial_cmd_reply_ok(cmd, buf);
 }
 
+UART_HandleTypeDef *proto_uart1_handle(void)
+{
+    return s_uart1;
+}
+
+void proto_uart_set_mode(proto_uart_mode_t mode)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    /* Drop any bytes buffered for the previous mode (factory CLI vs binary link). */
+    s_rx_head = 0U;
+    s_rx_tail = 0U;
+    s_uart_mode = mode;
+    if (primask == 0U)
+    {
+        __enable_irq();
+    }
+}
+
+proto_uart_mode_t proto_uart_get_mode(void)
+{
+    return (proto_uart_mode_t)s_uart_mode;
+}
+
+void proto_esp_register_rx_byte_handler(proto_esp_rx_byte_fn fn, void *user)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    s_esp_rx_fn = fn;
+    s_esp_rx_user = user;
+    if (primask == 0U)
+    {
+        __enable_irq();
+    }
+}
+
 void proto_init(UART_HandleTypeDef *huart)
 {
     s_uart1 = huart;
     proto_clear();
     s_proto_active = 0U;
     s_proto_monitor_task = NULL;
+    s_uart_mode = PROTO_UART_MODE_FACTORY;
+    s_esp_rx_fn = NULL;
+    s_esp_rx_user = NULL;
 }
 
 void proto_on_rx_from_isr(uint8_t byte)
 {
-    uint16_t head = s_rx_head;
-    uint16_t next = (uint16_t)((head + 1U) % PROTO_RX_BUF_SIZE);
-    if (next == s_rx_tail)
+    proto_esp_rx_byte_fn fn;
+    void *user;
+
+    if (s_uart_mode == PROTO_UART_MODE_ESP8266)
     {
-        s_rx_tail = (uint16_t)((s_rx_tail + 1U) % PROTO_RX_BUF_SIZE);
+        fn = s_esp_rx_fn;
+        user = s_esp_rx_user;
+        if (fn != NULL)
+        {
+            fn(byte, user);
+        }
+        return;
     }
-    s_rx_buf[head] = byte;
-    s_rx_head = next;
+
+    {
+        uint16_t head = s_rx_head;
+        uint16_t next = (uint16_t)((head + 1U) % PROTO_RX_BUF_SIZE);
+        if (next == s_rx_tail)
+        {
+            s_rx_tail = (uint16_t)((s_rx_tail + 1U) % PROTO_RX_BUF_SIZE);
+        }
+        s_rx_buf[head] = byte;
+        s_rx_head = next;
+    }
 }
 
 void proto_cmd_tx(int argc, const char *argv[])
@@ -402,6 +472,10 @@ void proto_poll_monitor(void)
     {
         return;
     }
+    if (s_uart_mode == PROTO_UART_MODE_ESP8266)
+    {
+        return;
+    }
 
     rx_len = proto_pop(rx, PROTO_RX_DUMP_MAX);
     if (rx_len == 0U)
@@ -472,4 +546,9 @@ void proto_process_line(const char *line)
     {
         serial_cmd_reply_ng();
     }
+}
+
+void proto_app_dispatch_from_event_loop(void)
+{
+    ty_link_service_main_from_event_loop();
 }

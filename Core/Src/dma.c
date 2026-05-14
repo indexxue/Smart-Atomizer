@@ -30,22 +30,28 @@
 /*----------------------------------------------------------------------------*/
 
 /* USER CODE BEGIN 1 */
-
+/* DMA1 Ch1: ADC1（PA0），见 HAL_ADC_MspInit / adc_voltage.c */
+/* DMA1 Ch3: SPI1 TX（strip），见 MX_SPI1_Init — 保持不变 */
+/* DMA2 Ch1: ADC3（PA1），见 HAL_ADC_MspInit / adc_voltage.c */
 /* USER CODE END 1 */
 
 /**
-  * Enable DMA controller clock
+  * Enable DMA1/DMA2 clock and NVIC for used channels.
   */
 void MX_DMA_Init(void)
 {
 
-  /* DMA controller clock enable */
   __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
-  /* DMA interrupt init */
-  /* DMA1_Channel3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
   HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+
+  HAL_NVIC_SetPriority(DMA2_Channel1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Channel1_IRQn);
 
 }
 

@@ -8,6 +8,8 @@
 #include "log.h"
 #endif
 
+/* EVT_ID_OVERHEAT is signaled from input EXTI (PC0); same mask/queue API as other event_id_e bits. */
+
 typedef struct
 {
     uint32_t mask;
@@ -28,7 +30,7 @@ void event_init(void)
     self = &local_self;
     memset(self, 0, sizeof(event_self_t));
 
-    self->semaphore = xSemaphoreCreateBinary();
+    self->semaphore = xSemaphoreCreateCounting(32U, 0U);
     if (NULL == self->semaphore)
     {
 #ifdef EVENT_USE_LOG
@@ -101,6 +103,26 @@ void event_set_from_isr(event_id_e id)
     
     xSemaphoreGiveFromISR(self->semaphore, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+void event_signal(void)
+{
+    if (NULL == self)
+    {
+        return;
+    }
+    (void)xSemaphoreGive(self->semaphore);
+}
+
+void event_signal_from_isr(void)
+{
+    if (NULL == self)
+    {
+        return;
+    }
+    BaseType_t hpw = pdFALSE;
+    (void)xSemaphoreGiveFromISR(self->semaphore, &hpw);
+    portYIELD_FROM_ISR(hpw);
 }
 
 bool event_is_set(event_id_e id)

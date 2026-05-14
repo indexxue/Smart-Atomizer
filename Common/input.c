@@ -81,6 +81,10 @@ void input_pin_callback(uint16_t GPIO_Pin)
             if (self.input[i].pin == GPIO_Pin)
             {
                 self.input[i].triggered = 1;
+                if (self.input[i].evt == INPUT_EVT_OVERHEAT)
+                {
+                    event_set_from_isr(EVT_ID_OVERHEAT);
+                }
                 break;
             }
         }
@@ -127,10 +131,11 @@ static void input_config(void)
 {
     input_io_t *list = s_input_list;
 
-    list[0].port = GPIOA;
-    list[0].pin = GPIO_PIN_1;
-    list[0].evt = INPUT_EVT_TAMPER;
-    list[0].active = 0;
+    /* PC0: overtemperature (EXTI0); active=1 means pin HIGH asserts alarm. */
+    list[0].port = GPIOC;
+    list[0].pin = GPIO_PIN_0;
+    list[0].evt = INPUT_EVT_OVERHEAT;
+    list[0].active = 1;
     list[0].old_state = INPUT_EVT_OPEN;
     list[0].triggered = 0;
 
@@ -211,7 +216,7 @@ void input_schedule(input_notify_t notify)
 
 #ifdef INPUT_USE_LOG
         const char *map[INPUT_EVT_MAX] = {
-            "None", "Tamper", "DWS_R", "DWS_L", "WaterLeak"
+            "None", "Tamper", "DWS_R", "DWS_L", "WaterLeak", "Overheat"
         };
         LOG_INFO("input event: %s, %s", map[event], (new_state == INPUT_EVT_CLOSE) ? "close" : "open");
 #endif

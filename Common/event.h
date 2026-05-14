@@ -20,11 +20,15 @@ typedef enum
     EVT_ID_INPUT = 0x00000002,
     EVT_ID_TIMER = 0x00000004,
     EVT_ID_WATCHDOG = 0x00000008,
+    EVT_ID_OVERHEAT = 0x00000010,
 } event_id_e;
 
 void event_init(void);
 void event_set(event_id_e id);
 void event_set_from_isr(event_id_e id);
+/** Wake the main event loop without OR-ing a new bit (use after pushing work to a side queue, e.g. ty_link set-request). */
+void event_signal(void);
+void event_signal_from_isr(void);
 bool event_is_set(event_id_e id);
 void event_clear(event_id_e id);
 void event_schedule(void);

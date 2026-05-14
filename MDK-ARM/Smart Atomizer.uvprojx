@@ -657,9 +657,19 @@
               <FilePath>..\cbb\tb6612.c</FilePath>
             </File>
             <File>
+              <FileName>ws2818b.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\ws2818b.c</FilePath>
+            </File>
+            <File>
               <FileName>xpt2046.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\cbb\xpt2046.c</FilePath>
+            </File>
+            <File>
+              <FileName>sht20.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\sht20.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -712,6 +722,16 @@
               <FilePath>..\Common\proto.c</FilePath>
             </File>
             <File>
+              <FileName>ty_serial_frame.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\ty_serial_frame.c</FilePath>
+            </File>
+            <File>
+              <FileName>ty_link.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\ty_link.c</FilePath>
+            </File>
+            <File>
               <FileName>serial_cmd.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\serial_cmd.c</FilePath>
@@ -720,6 +740,16 @@
               <FileName>timer.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\timer.c</FilePath>
+            </File>
+            <File>
+              <FileName>strip.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\strip.c</FilePath>
+            </File>
+            <File>
+              <FileName>adc_voltage.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\adc_voltage.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1659,9 +1689,19 @@
               <FilePath>..\cbb\tb6612.c</FilePath>
             </File>
             <File>
+              <FileName>ws2818b.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\ws2818b.c</FilePath>
+            </File>
+            <File>
               <FileName>xpt2046.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\cbb\xpt2046.c</FilePath>
+            </File>
+            <File>
+              <FileName>sht20.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\sht20.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1714,6 +1754,16 @@
               <FilePath>..\Common\proto.c</FilePath>
             </File>
             <File>
+              <FileName>ty_serial_frame.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\ty_serial_frame.c</FilePath>
+            </File>
+            <File>
+              <FileName>ty_link.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\ty_link.c</FilePath>
+            </File>
+            <File>
               <FileName>serial_cmd.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\serial_cmd.c</FilePath>
@@ -1722,6 +1772,16 @@
               <FileName>timer.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\timer.c</FilePath>
+            </File>
+            <File>
+              <FileName>strip.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\strip.c</FilePath>
+            </File>
+            <File>
+              <FileName>adc_voltage.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\adc_voltage.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -2679,9 +2739,19 @@
               <FilePath>..\cbb\tb6612.c</FilePath>
             </File>
             <File>
+              <FileName>ws2818b.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\ws2818b.c</FilePath>
+            </File>
+            <File>
               <FileName>xpt2046.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\cbb\xpt2046.c</FilePath>
+            </File>
+            <File>
+              <FileName>sht20.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\sht20.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -2734,6 +2804,16 @@
               <FilePath>..\Common\proto.c</FilePath>
             </File>
             <File>
+              <FileName>ty_serial_frame.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\ty_serial_frame.c</FilePath>
+            </File>
+            <File>
+              <FileName>ty_link.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\ty_link.c</FilePath>
+            </File>
+            <File>
               <FileName>serial_cmd.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\serial_cmd.c</FilePath>
@@ -2742,6 +2822,16 @@
               <FileName>timer.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\timer.c</FilePath>
+            </File>
+            <File>
+              <FileName>strip.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\strip.c</FilePath>
+            </File>
+            <File>
+              <FileName>adc_voltage.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\adc_voltage.c</FilePath>
             </File>
           </Files>
         </Group>
