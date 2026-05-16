@@ -81,10 +81,6 @@ void input_pin_callback(uint16_t GPIO_Pin)
             if (self.input[i].pin == GPIO_Pin)
             {
                 self.input[i].triggered = 1;
-                if (self.input[i].evt == INPUT_EVT_OVERHEAT)
-                {
-                    event_set_from_isr(EVT_ID_OVERHEAT);
-                }
                 break;
             }
         }
@@ -111,7 +107,7 @@ static void input_gpio_init(input_io_t *list, uint8_t number)
 
         gpio.Pin = in->pin;
         gpio.Mode = GPIO_MODE_IT_RISING_FALLING;
-        gpio.Pull = GPIO_NOPULL;
+        gpio.Pull = (in->evt == INPUT_EVT_OVERHEAT) ? GPIO_PULLDOWN : GPIO_NOPULL;
         gpio.Speed = GPIO_SPEED_FREQ_LOW;
         HAL_GPIO_Init(in->port, &gpio);
 

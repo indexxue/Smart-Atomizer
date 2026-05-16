@@ -12,6 +12,7 @@
 #include "i2c.h"
 #include "nvs.h"
 #include "led_scene.h"
+#include "strip.h"
 #include "button.h"
 #include "log.h"
 #include "proto.h"

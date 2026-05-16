@@ -195,8 +195,8 @@ static void ty_link_maybe_send_sensor_report(void)
 
     {
         uint8_t pl[6];
-        uint16_t sound_raw = adc_voltage_avg_raw(ADC_VOLTAGE_SOUND);
-        uint16_t water_raw = adc_voltage_avg_raw(ADC_VOLTAGE_WATER);
+        uint16_t sound_raw = adc_voltage_audio_raw();
+        uint16_t water_raw = adc_voltage_water_raw();
 
         pl[0] = s_shadow.measured_rh_pct;
         pl[1] = (uint8_t)((sound_raw >> 4) > 255U ? 255U : (sound_raw >> 4));

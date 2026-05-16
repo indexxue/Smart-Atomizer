@@ -78,6 +78,14 @@ typedef enum
     STRIP_SCENE_ID_TRIGGER,
     STRIP_SCENE_ID_ERROR,
     STRIP_SCENE_ID_SUCCESS,
+    /** 常亮（暖白）。 */
+    STRIP_SCENE_ID_SOLID,
+    /** 彩色呼吸（HSV 色相旋转 + 亮度起伏）。 */
+    STRIP_SCENE_ID_COLOR_BREATH,
+    /** 彩色流水（彩虹追逐）。 */
+    STRIP_SCENE_ID_COLOR_CHASE,
+    /** ADC1 / MAX9814: DMA 平均 + 包络驱动 VU（与 @c strip_scene_update 同步刷新）。 */
+    STRIP_SCENE_ID_MIC_REACTIVE,
     STRIP_SCENE_ID_MAX_NUM,
 } strip_scene_id_e;
 
@@ -92,6 +100,11 @@ typedef enum
 {
     STRIP_ACTION_ONOFF = 0,
     STRIP_ACTION_FADE,
+    /** 每帧从 ADC1（声压）取数并刷新灯带；不自动结束。 */
+    STRIP_ACTION_MIC_STREAM,
+    STRIP_ACTION_RGB_SOLID,
+    STRIP_ACTION_RGB_BREATH,
+    STRIP_ACTION_RGB_CHASE,
 } strip_scene_action_type_e;
 
 typedef struct
@@ -112,6 +125,10 @@ typedef struct
             uint8_t step;
             uint32_t interval;
         } fade;
+        struct
+        {
+            uint8_t reserved;
+        } mic;
     } sub;
 } strip_scene_action_t;
 
@@ -133,6 +150,19 @@ void strip_scene_init(void);
 void strip_scene_update(void);
 void strip_scene_run(strip_scene_id_e id);
 void strip_scene_cancel(strip_scene_id_e id);
+
+/** 重置 MIC 场景的直流跟踪与峰值（进入 @c STRIP_SCENE_ID_MIC_REACTIVE 时自动调用）。 */
+void strip_scene_mic_reset(void);
+
+/** Factory 灯带展示模式 1..4：常亮 / 呼吸 / 流水 / MIC(电压)。 */
+#define STRIP_FACTORY_MODE_SOLID   1u
+#define STRIP_FACTORY_MODE_BREATH  2u
+#define STRIP_FACTORY_MODE_CHASE   3u
+#define STRIP_FACTORY_MODE_MIC     4u
+
+void strip_scene_factory_display_set(uint8_t mode_1_to_4);
+uint8_t strip_scene_factory_display_get(void);
+void strip_scene_factory_display_next(void);
 
 #ifdef __cplusplus
 }

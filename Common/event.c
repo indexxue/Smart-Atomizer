@@ -8,7 +8,7 @@
 #include "log.h"
 #endif
 
-/* EVT_ID_OVERHEAT is signaled from input EXTI (PC0); same mask/queue API as other event_id_e bits. */
+/* EVT_ID_OVERHEAT / EVT_ID_OVERHEAT_OK are set from input_schedule() after PC0 debounce. */
 
 typedef struct
 {

@@ -88,6 +88,7 @@ static void app_event_loop(void)
   for (;;)
   {
     event_wait_timeout_ms(20U);
+    input_schedule(app_input_notify);
     button_schedule();
     led_scene_update();
     proto_app_dispatch_from_event_loop();

@@ -4,6 +4,7 @@
  */
 
 #include "strip.h"
+#include "adc_voltage.h"
 #include <stddef.h>
 #include <string.h>
 
@@ -276,6 +277,402 @@ typedef struct
 static strip_t *s_strip;
 static strip_scene_self_t s_scene;
 
+/* --- MAX9814 / ADC1 -> strip (STRIP_SCENE_ID_MIC_REACTIVE) ---------------- */
+
+static uint32_t s_mic_baseline_u32;
+static uint32_t s_mic_peak_u32;
+static uint16_t s_mic_full_scale = 1200u;
+/** 包络超过该值视为「开始说话」；低于 @ref s_mic_gate_release 则退回静音。 */
+static uint16_t s_mic_gate_open = 430u;
+static uint16_t s_mic_gate_release = 280u;
+static bool s_mic_speech_latched;
+static uint16_t s_mic_fill_smooth;
+
+/** 本帧 |raw−baseline|，仅在 MIC 场景运行时在 @ref strip_scene_update 中更新。 */
+static uint32_t s_mic_snap_mag;
+
+static void strip_mic_frame_prepare(void);
+static bool strip_scene_mic_is_active(void);
+static void strip_scene_solid_apply(void);
+static void strip_scene_breath_apply(void);
+static void strip_scene_chase_apply(void);
+
+/* Factory display mode 1..4 (see strip_scene_factory_display_*). */
+static uint8_t s_factory_display_mode = STRIP_FACTORY_MODE_MIC;
+
+/** 常亮：柔和黄色暖调（约 25% 满亮度）。 */
+#define STRIP_SOLID_R  72u
+#define STRIP_SOLID_G  58u
+#define STRIP_SOLID_B  10u
+
+/** 呼吸/流水：每 N 个 @c STRIP_SCENE_TICK_MS 帧才推进一帧动画（50ms 基准）。 */
+#define STRIP_BREATH_ANIM_DIV   4u   /* 200ms/步，完整呼吸约 5~6s */
+#define STRIP_CHASE_ANIM_DIV    3u   /* 150ms/步 */
+
+#define STRIP_BREATH_HUE_STEP   1u
+#define STRIP_BREATH_VAL_STEP   3u
+#define STRIP_BREATH_VAL_MIN    18u
+#define STRIP_BREATH_VAL_MAX    130u
+#define STRIP_BREATH_SAT        220u
+
+#define STRIP_CHASE_OFFSET_STEP 5u
+
+static uint8_t s_breath_hue;
+static uint8_t s_breath_val;
+static int8_t s_breath_val_dir = 1;
+static uint8_t s_breath_anim_div;
+static uint8_t s_chase_offset;
+static uint8_t s_chase_anim_div;
+
+static uint32_t mic_u32_min(uint32_t a, uint32_t b)
+{
+    return (a < b) ? a : b;
+}
+
+static void strip_mic_frame_prepare(void)
+{
+    uint16_t raw;
+    int32_t ac;
+    uint32_t mag;
+
+    raw = adc_voltage_audio_raw();
+    if (s_mic_baseline_u32 == 0u)
+    {
+        s_mic_baseline_u32 = (uint32_t)raw;
+    }
+    else
+    {
+        s_mic_baseline_u32 = (s_mic_baseline_u32 * 63u + (uint32_t)raw) >> 6u;
+    }
+
+    ac = (int32_t)raw - (int32_t)s_mic_baseline_u32;
+    if (ac < 0)
+    {
+        mag = (uint32_t)(-ac);
+    }
+    else
+    {
+        mag = (uint32_t)ac;
+    }
+    s_mic_snap_mag = mag;
+}
+
+/** h,s,v ∈ [0,255]，紧凑 6 段彩虹（无浮点）。 */
+static void mic_hsv_to_rgb(uint8_t h, uint8_t s, uint8_t v, uint8_t *pr, uint8_t *pg, uint8_t *pb)
+{
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+    uint8_t region;
+    uint32_t rem;
+    uint32_t p;
+    uint32_t q;
+    uint32_t t;
+
+    if (s == 0u)
+    {
+        *pr = v;
+        *pg = v;
+        *pb = v;
+        return;
+    }
+
+    region = (uint8_t)(((uint32_t)h * 6u) >> 8);
+    rem = ((uint32_t)h * 6u) & 0xFFu;
+    p = ((uint32_t)v * (255u - (uint32_t)s)) / 255u;
+    q = ((uint32_t)v * (255u - (((uint32_t)s * rem) >> 8))) / 255u;
+    t = ((uint32_t)v * (255u - (((uint32_t)s * (255u - rem)) >> 8))) / 255u;
+
+    switch (region)
+    {
+        default:
+        case 0u:
+            r = v;
+            g = (uint8_t)t;
+            b = (uint8_t)p;
+            break;
+        case 1u:
+            r = (uint8_t)q;
+            g = v;
+            b = (uint8_t)p;
+            break;
+        case 2u:
+            r = (uint8_t)p;
+            g = v;
+            b = (uint8_t)t;
+            break;
+        case 3u:
+            r = (uint8_t)p;
+            g = (uint8_t)q;
+            b = v;
+            break;
+        case 4u:
+            r = (uint8_t)t;
+            g = (uint8_t)p;
+            b = v;
+            break;
+        case 5u:
+            r = v;
+            g = (uint8_t)p;
+            b = (uint8_t)q;
+            break;
+    }
+
+    *pr = r;
+    *pg = g;
+    *pb = b;
+}
+
+void strip_scene_mic_reset(void)
+{
+    s_mic_baseline_u32 = 0u;
+    s_mic_peak_u32 = 0u;
+    s_mic_speech_latched = false;
+    s_mic_fill_smooth = 0u;
+}
+
+static bool strip_scene_mic_is_active(void)
+{
+    return s_scene.initialized &&
+           s_scene.states[STRIP_SCENE_ID_MIC_REACTIVE].running;
+}
+
+static void strip_scene_mic_apply(void)
+{
+    uint32_t mag;
+    uint32_t pk;
+    uint32_t span;
+    uint32_t fill_target;
+    uint16_t i;
+
+    /* 静音：每颗灯独立暗色，不跟 ADC 抖动绑定 */
+    static const uint8_t k_idle_r[4] = {22u, 10u, 18u, 14u};
+    static const uint8_t k_idle_g[4] = {8u, 20u, 14u, 16u};
+    static const uint8_t k_idle_b[4] = {26u, 22u, 10u, 24u};
+
+    if (s_strip == NULL || !s_strip->initialized)
+    {
+        return;
+    }
+
+    mag = s_mic_snap_mag;
+
+    if (mag > s_mic_peak_u32)
+    {
+        s_mic_peak_u32 = mag;
+    }
+    else
+    {
+        s_mic_peak_u32 = (s_mic_peak_u32 * 250u) >> 8u;
+    }
+
+    pk = s_mic_peak_u32;
+    if (s_mic_speech_latched)
+    {
+        if (pk < (uint32_t)s_mic_gate_release)
+        {
+            s_mic_speech_latched = false;
+        }
+    }
+    else
+    {
+        if (pk >= (uint32_t)s_mic_gate_open)
+        {
+            s_mic_speech_latched = true;
+        }
+    }
+
+    if (!s_mic_speech_latched)
+    {
+        span = 0u;
+    }
+    else if (pk > (uint32_t)s_mic_gate_open)
+    {
+        span = pk - (uint32_t)s_mic_gate_open;
+    }
+    else
+    {
+        span = 0u;
+    }
+
+    span = mic_u32_min(span, (uint32_t)s_mic_full_scale);
+
+    fill_target = (span * 1020u) / (uint32_t)s_mic_full_scale;
+    if (fill_target > 1020u)
+    {
+        fill_target = 1020u;
+    }
+
+    if (!s_mic_speech_latched)
+    {
+        /* 快速回到「稳定 idle」避免在门限附近拖尾 */
+        s_mic_fill_smooth = (uint16_t)(((uint32_t)s_mic_fill_smooth * 5u) >> 3);
+        if (s_mic_fill_smooth < 16u)
+        {
+            s_mic_fill_smooth = 0u;
+        }
+    }
+    else if (fill_target > (uint32_t)s_mic_fill_smooth)
+    {
+        uint32_t up = fill_target - (uint32_t)s_mic_fill_smooth;
+        uint32_t step = (up * 3u) >> 2;
+        if (step == 0u)
+        {
+            step = 1u;
+        }
+        s_mic_fill_smooth = (uint16_t)mic_u32_min(1020u, (uint32_t)s_mic_fill_smooth + step);
+    }
+    else
+    {
+        s_mic_fill_smooth = (uint16_t)(((uint32_t)s_mic_fill_smooth * 13u) >> 4);
+        if (s_mic_fill_smooth < 16u)
+        {
+            s_mic_fill_smooth = 0u;
+        }
+    }
+
+    if (s_mic_fill_smooth == 0u)
+    {
+        for (i = 0u; i < (uint16_t)STRIP_SCENE_LED_NUM; i++)
+        {
+            (void)strip_set_pixel(s_strip, i, k_idle_r[i], k_idle_g[i], k_idle_b[i]);
+        }
+    }
+    else
+    {
+        uint32_t fill = (uint32_t)s_mic_fill_smooth;
+        for (i = 0u; i < (uint16_t)STRIP_SCENE_LED_NUM; i++)
+        {
+            uint32_t base = (uint32_t)i * 255u;
+            uint32_t lv;
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+            uint8_t hue;
+            uint8_t sat;
+            uint8_t val;
+
+            if (fill <= base)
+            {
+                lv = 0u;
+            }
+            else if ((fill - base) >= 255u)
+            {
+                lv = 255u;
+            }
+            else
+            {
+                lv = fill - base;
+            }
+
+            /* 每颗灯色相错开 + 随整体电平缓慢旋转，饱和度高 */
+            hue = (uint8_t)((uint32_t)i * 48u + (fill >> 2) + (span >> 1));
+            sat = 255u;
+            val = (uint8_t)mic_u32_min(255u, 28u + (lv * 230u) / 255u);
+            mic_hsv_to_rgb(hue, sat, val, &r, &g, &b);
+            (void)strip_set_pixel(s_strip, i, r, g, b);
+        }
+    }
+
+    (void)strip_show_spi(s_strip);
+}
+
+static void strip_scene_solid_apply(void)
+{
+    uint16_t i;
+
+    if (s_strip == NULL || !s_strip->initialized)
+    {
+        return;
+    }
+
+    for (i = 0u; i < (uint16_t)STRIP_SCENE_LED_NUM; i++)
+    {
+        (void)strip_set_pixel(s_strip, i, STRIP_SOLID_R, STRIP_SOLID_G, STRIP_SOLID_B);
+    }
+    (void)strip_show_spi(s_strip);
+}
+
+static void strip_scene_breath_apply(void)
+{
+    uint16_t i;
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+
+    if (s_strip == NULL || !s_strip->initialized)
+    {
+        return;
+    }
+
+    s_breath_anim_div++;
+    if (s_breath_anim_div >= STRIP_BREATH_ANIM_DIV)
+    {
+        s_breath_anim_div = 0u;
+        s_breath_hue = (uint8_t)(s_breath_hue + STRIP_BREATH_HUE_STEP);
+        if (s_breath_val_dir > 0)
+        {
+            if (s_breath_val >= STRIP_BREATH_VAL_MAX)
+            {
+                s_breath_val_dir = -1;
+            }
+            else
+            {
+                uint16_t n = (uint16_t)s_breath_val + STRIP_BREATH_VAL_STEP;
+                s_breath_val = (n >= STRIP_BREATH_VAL_MAX) ? STRIP_BREATH_VAL_MAX : (uint8_t)n;
+            }
+        }
+        else
+        {
+            if (s_breath_val <= STRIP_BREATH_VAL_MIN)
+            {
+                s_breath_val_dir = 1;
+            }
+            else
+            {
+                s_breath_val = (uint8_t)(s_breath_val - STRIP_BREATH_VAL_STEP);
+            }
+        }
+    }
+
+    mic_hsv_to_rgb(s_breath_hue, STRIP_BREATH_SAT, s_breath_val, &r, &g, &b);
+    for (i = 0u; i < (uint16_t)STRIP_SCENE_LED_NUM; i++)
+    {
+        (void)strip_set_pixel(s_strip, i, r, g, b);
+    }
+    (void)strip_show_spi(s_strip);
+}
+
+static void strip_scene_chase_apply(void)
+{
+    uint16_t i;
+
+    if (s_strip == NULL || !s_strip->initialized)
+    {
+        return;
+    }
+
+    s_chase_anim_div++;
+    if (s_chase_anim_div >= STRIP_CHASE_ANIM_DIV)
+    {
+        s_chase_anim_div = 0u;
+        s_chase_offset = (uint8_t)(s_chase_offset + STRIP_CHASE_OFFSET_STEP);
+    }
+
+    for (i = 0u; i < (uint16_t)STRIP_SCENE_LED_NUM; i++)
+    {
+        uint8_t r;
+        uint8_t g;
+        uint8_t b;
+        uint8_t hue = (uint8_t)(s_chase_offset + (uint8_t)(i * 64u));
+        uint8_t val = (uint8_t)(36u + (((uint32_t)i + 1u) * 22u));
+
+        mic_hsv_to_rgb(hue, STRIP_BREATH_SAT, val, &r, &g, &b);
+        (void)strip_set_pixel(s_strip, i, r, g, b);
+    }
+    (void)strip_show_spi(s_strip);
+}
+
 static const strip_scene_t strip_scene_bootup =
 {
     .cycle = 1,
@@ -387,6 +784,62 @@ static const strip_scene_t strip_scene_success =
     },
 };
 
+static const strip_scene_t strip_scene_mic =
+{
+    .cycle = STRIP_SCENE_CYCLE_ALWAYS,
+    .num = 1u,
+    .action[0] =
+    {
+        .cycle = 1u,
+        .type = STRIP_ACTION_MIC_STREAM,
+        .sub.mic = { .reserved = 0u },
+    },
+};
+
+static const strip_scene_t strip_scene_solid =
+{
+    .cycle = STRIP_SCENE_CYCLE_ALWAYS,
+    .num = 1u,
+    .action[0] =
+    {
+        .cycle = 1u,
+        .type = STRIP_ACTION_RGB_SOLID,
+        .sub.mic = { .reserved = 0u },
+    },
+};
+
+static const strip_scene_t strip_scene_color_breath =
+{
+    .cycle = STRIP_SCENE_CYCLE_ALWAYS,
+    .num = 1u,
+    .action[0] =
+    {
+        .cycle = 1u,
+        .type = STRIP_ACTION_RGB_BREATH,
+        .sub.mic = { .reserved = 0u },
+    },
+};
+
+static const strip_scene_t strip_scene_color_chase =
+{
+    .cycle = STRIP_SCENE_CYCLE_ALWAYS,
+    .num = 1u,
+    .action[0] =
+    {
+        .cycle = 1u,
+        .type = STRIP_ACTION_RGB_CHASE,
+        .sub.mic = { .reserved = 0u },
+    },
+};
+
+static const strip_scene_id_e s_factory_display_scenes[] =
+{
+    STRIP_SCENE_ID_SOLID,
+    STRIP_SCENE_ID_COLOR_BREATH,
+    STRIP_SCENE_ID_COLOR_CHASE,
+    STRIP_SCENE_ID_MIC_REACTIVE,
+};
+
 static const strip_scene_tab_t s_scene_table[STRIP_SCENE_ID_MAX_NUM] =
 {
     [STRIP_SCENE_ID_BOOTUP]  = {.prio = STRIP_SCENE_PRIO_LOW,    .scene = &strip_scene_bootup,},
@@ -394,6 +847,10 @@ static const strip_scene_tab_t s_scene_table[STRIP_SCENE_ID_MAX_NUM] =
     [STRIP_SCENE_ID_TRIGGER] = {.prio = STRIP_SCENE_PRIO_NORMAL, .scene = &strip_scene_trigger,},
     [STRIP_SCENE_ID_ERROR]   = {.prio = STRIP_SCENE_PRIO_NORMAL, .scene = &strip_scene_error,},
     [STRIP_SCENE_ID_SUCCESS] = {.prio = STRIP_SCENE_PRIO_NORMAL, .scene = &strip_scene_success,},
+    [STRIP_SCENE_ID_SOLID]        = {.prio = STRIP_SCENE_PRIO_NORMAL, .scene = &strip_scene_solid,},
+    [STRIP_SCENE_ID_COLOR_BREATH] = {.prio = STRIP_SCENE_PRIO_NORMAL, .scene = &strip_scene_color_breath,},
+    [STRIP_SCENE_ID_COLOR_CHASE]    = {.prio = STRIP_SCENE_PRIO_NORMAL, .scene = &strip_scene_color_chase,},
+    [STRIP_SCENE_ID_MIC_REACTIVE]   = {.prio = STRIP_SCENE_PRIO_NORMAL, .scene = &strip_scene_mic,},
 };
 
 static void strip_scene_apply_rgb(const strip_scene_rgb_t *rgb)
@@ -412,6 +869,23 @@ static void strip_scene_apply_rgb(const strip_scene_rgb_t *rgb)
         (void)strip_fill(s_strip, rgb->r, rgb->g, rgb->b);
     }
     (void)strip_show_spi(s_strip);
+}
+
+static bool strip_scene_is_factory_display(strip_scene_id_e id)
+{
+    return (id == STRIP_SCENE_ID_SOLID) ||
+           (id == STRIP_SCENE_ID_COLOR_BREATH) ||
+           (id == STRIP_SCENE_ID_COLOR_CHASE) ||
+           (id == STRIP_SCENE_ID_MIC_REACTIVE);
+}
+
+static strip_scene_id_e strip_scene_factory_mode_to_id(uint8_t mode_1_to_4)
+{
+    if (mode_1_to_4 < STRIP_FACTORY_MODE_SOLID || mode_1_to_4 > STRIP_FACTORY_MODE_MIC)
+    {
+        mode_1_to_4 = STRIP_FACTORY_MODE_MIC;
+    }
+    return s_factory_display_scenes[mode_1_to_4 - 1u];
 }
 
 static strip_scene_id_e strip_scene_find_highest_priority(void)
@@ -501,6 +975,11 @@ void strip_scene_update(void)
         return;
     }
 
+    if (strip_scene_mic_is_active())
+    {
+        strip_mic_frame_prepare();
+    }
+
     if (s_scene.active_scene >= STRIP_SCENE_ID_MAX_NUM)
     {
         return;
@@ -517,6 +996,27 @@ void strip_scene_update(void)
     state->action_time += STRIP_SCENE_TICK_MS;
     action = &scene->action[state->current_action];
     action_complete = false;
+
+    if (action->type == STRIP_ACTION_MIC_STREAM)
+    {
+        strip_scene_mic_apply();
+        return;
+    }
+    if (action->type == STRIP_ACTION_RGB_SOLID)
+    {
+        strip_scene_solid_apply();
+        return;
+    }
+    if (action->type == STRIP_ACTION_RGB_BREATH)
+    {
+        strip_scene_breath_apply();
+        return;
+    }
+    if (action->type == STRIP_ACTION_RGB_CHASE)
+    {
+        strip_scene_chase_apply();
+        return;
+    }
 
     if (action->type == STRIP_ACTION_ONOFF)
     {
@@ -627,12 +1127,33 @@ void strip_scene_run(strip_scene_id_e id)
     state->current_rgb.g = 0u;
     state->current_rgb.b = 0u;
 
+    if (id == STRIP_SCENE_ID_MIC_REACTIVE)
+    {
+        strip_scene_mic_reset();
+    }
+    if (id == STRIP_SCENE_ID_COLOR_BREATH)
+    {
+        s_breath_hue = 0u;
+        s_breath_val = STRIP_BREATH_VAL_MIN;
+        s_breath_val_dir = 1;
+        s_breath_anim_div = 0u;
+    }
+    if (id == STRIP_SCENE_ID_COLOR_CHASE)
+    {
+        s_chase_offset = 0u;
+        s_chase_anim_div = 0u;
+    }
+
     new_scene = strip_scene_find_highest_priority();
     if (new_scene != s_scene.active_scene)
     {
         if (s_scene.active_scene < STRIP_SCENE_ID_MAX_NUM)
         {
-            s_scene.states[s_scene.active_scene].running = false;
+            strip_scene_id_e old_id = s_scene.active_scene;
+            if (!strip_scene_is_factory_display(old_id))
+            {
+                s_scene.states[old_id].running = false;
+            }
         }
         s_scene.active_scene = new_scene;
     }
@@ -657,6 +1178,63 @@ void strip_scene_run(strip_scene_id_e id)
     }
 }
 
+void strip_scene_factory_display_set(uint8_t mode_1_to_4)
+{
+    strip_scene_id_e target;
+    uint8_t i;
+
+    if (mode_1_to_4 < STRIP_FACTORY_MODE_SOLID || mode_1_to_4 > STRIP_FACTORY_MODE_MIC)
+    {
+        mode_1_to_4 = STRIP_FACTORY_MODE_MIC;
+    }
+    s_factory_display_mode = mode_1_to_4;
+    target = strip_scene_factory_mode_to_id(mode_1_to_4);
+
+    for (i = 0u; i < (uint8_t)(sizeof(s_factory_display_scenes) / sizeof(s_factory_display_scenes[0])); i++)
+    {
+        strip_scene_id_e sid = s_factory_display_scenes[i];
+        if (sid != target)
+        {
+            strip_scene_cancel(sid);
+        }
+    }
+
+    if (!s_scene.states[target].running)
+    {
+        strip_scene_run(target);
+    }
+
+    /* 显式切换展示模式时强制激活，避免 TRIGGER 等同优先级场景占住 active_scene。 */
+    if (s_scene.states[target].running)
+    {
+        strip_scene_state_t *active = &s_scene.states[target];
+
+        s_scene.active_scene = target;
+        active->current_cycle = 0u;
+        active->current_action = 0u;
+        active->action_cycle = 0u;
+        active->action_time = 0u;
+        active->current_rgb.r = 0u;
+        active->current_rgb.g = 0u;
+        active->current_rgb.b = 0u;
+    }
+}
+
+uint8_t strip_scene_factory_display_get(void)
+{
+    return s_factory_display_mode;
+}
+
+void strip_scene_factory_display_next(void)
+{
+    uint8_t next = s_factory_display_mode + 1u;
+    if (next > STRIP_FACTORY_MODE_MIC)
+    {
+        next = STRIP_FACTORY_MODE_SOLID;
+    }
+    strip_scene_factory_display_set(next);
+}
+
 void strip_scene_cancel(strip_scene_id_e id)
 {
     if (id >= STRIP_SCENE_ID_MAX_NUM)
@@ -669,6 +1247,23 @@ void strip_scene_cancel(strip_scene_id_e id)
     }
 
     s_scene.states[id].running = false;
+
+    if (id == STRIP_SCENE_ID_MIC_REACTIVE)
+    {
+        strip_scene_mic_reset();
+    }
+    if (id == STRIP_SCENE_ID_COLOR_BREATH)
+    {
+        s_breath_hue = 0u;
+        s_breath_val = 0u;
+        s_breath_val_dir = 1;
+        s_breath_anim_div = 0u;
+    }
+    if (id == STRIP_SCENE_ID_COLOR_CHASE)
+    {
+        s_chase_offset = 0u;
+        s_chase_anim_div = 0u;
+    }
 
     if (s_scene.active_scene == id)
     {

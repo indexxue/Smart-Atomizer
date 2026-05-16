@@ -21,6 +21,13 @@ typedef enum
     EVT_ID_TIMER = 0x00000004,
     EVT_ID_WATCHDOG = 0x00000008,
     EVT_ID_OVERHEAT = 0x00000010,
+    /** PC0 overtemperature cleared (pin high→low). */
+    EVT_ID_OVERHEAT_OK = 0x00000200,
+    /** Factory strip display modes (Mode key cycles 1→2→3→4→1). */
+    EVT_ID_STRIP_MODE_SOLID  = 0x00000020,
+    EVT_ID_STRIP_MODE_BREATH = 0x00000040,
+    EVT_ID_STRIP_MODE_CHASE  = 0x00000080,
+    EVT_ID_STRIP_MODE_MIC    = 0x00000100,
 } event_id_e;
 
 void event_init(void);

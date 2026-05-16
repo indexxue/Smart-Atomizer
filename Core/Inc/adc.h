@@ -34,17 +34,13 @@ extern "C" {
 
 extern ADC_HandleTypeDef hadc1;
 
-extern ADC_HandleTypeDef hadc3;
-
 extern DMA_HandleTypeDef hdma_adc1;
-extern DMA_HandleTypeDef hdma_adc3;
 
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
 
 void MX_ADC1_Init(void);
-void MX_ADC3_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 

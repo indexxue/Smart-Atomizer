@@ -19,6 +19,12 @@
 #include "proto.h"
 #include "queue.h"
 #include "boot_slot.h"
+#include "spi.h"
+#include "strip.h"
+#include "event.h"
+#include "input.h"
+#include "atomizer_pwm.h"
+#include "adc_voltage.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -57,6 +63,33 @@ typedef struct
 
 /* USER CODE BEGIN Variables */
 QueueHandle_t s_uart3_rx_queue = NULL;
+
+/** Last button notify payload; consumed by factory_dispatch_events() on EVT_ID_BUTTON. */
+typedef struct
+{
+  btn_id_e id;
+  btn_event_e event;
+  btn_permission_e permission;
+} factory_btn_pending_t;
+
+static factory_btn_pending_t s_btn_pending;
+
+/** SPI MOSI (PA7) WS281x test strip: 4 LEDs, same scene IDs as @c led_scene. */
+static strip_t s_factory_strip;
+static uint8_t s_factory_strip_grb[WS2818B_BUF_LEN(STRIP_SCENE_LED_NUM)];
+static uint8_t s_factory_strip_spi[STRIP_SPI_TX_BYTES(STRIP_SCENE_LED_NUM)];
+
+/**
+ * 雾化 PWM 运行条件（与 atomizer_pwm 挡位无关）：
+ * - 正常：未过温 且 水位电压 >= FACTORY_WATER_PROTECT_MV → 允许按挡位输出；
+ * - 禁止：过温(EVT_ID_OVERHEAT) 或 水位 < 阈值，任一成立即停 PWM；
+ * - 从禁止恢复：须同时满足 收到 EVT_ID_OVERHEAT_OK（常温）且 水位正常。
+ */
+#define FACTORY_WATER_PROTECT_MV  500u
+
+static bool s_factory_water_low;
+/** true：处于过温告警，直至 EVT_ID_OVERHEAT_OK。 */
+static bool s_factory_overheat_active;
 /* USER CODE END Variables */
 
 static const factory_rtos_cfg_t s_factory_cfg = {
@@ -107,6 +140,14 @@ static TickType_t factory_ms_to_ticks(uint32_t ms);
 static void factory_log_versions(void);
 static void factory_init_serial_cmd_path(void);
 static void factory_poll_services(void);
+static void factory_strip_init(void);
+static void factory_strip_mode_event_set(uint8_t mode_1_to_4);
+static void factory_input_notify(input_evt_e event, input_state_e state);
+static void factory_on_button(const factory_btn_pending_t *btn);
+static void factory_dispatch_events(void);
+static bool factory_atomizer_run_permitted(void);
+static void factory_atomizer_protect_sync(void);
+static void factory_atomizer_protect_poll(void);
 /* USER CODE END FunctionPrototypes */
 
 void StartThread(void *argument);
@@ -119,26 +160,89 @@ static void on_iwdg_timer(void *argument)
   (void)HAL_IWDG_Refresh(&hiwdg);
 }
 
-static void button_notify_cb(btn_id_e id, const char *name, btn_permission_e permission, btn_event_e event)
+static void factory_strip_mode_event_set(uint8_t mode_1_to_4)
 {
-  (void)permission;
-  LOG_INFO("BTN %s %s -> %s", button_id_to_str(id), name ? name : "", button_event_to_str(event));
+  event_clear(EVT_ID_STRIP_MODE_SOLID);
+  event_clear(EVT_ID_STRIP_MODE_BREATH);
+  event_clear(EVT_ID_STRIP_MODE_CHASE);
+  event_clear(EVT_ID_STRIP_MODE_MIC);
 
-  switch (event)
+  switch (mode_1_to_4)
+  {
+    case STRIP_FACTORY_MODE_SOLID:
+      event_set(EVT_ID_STRIP_MODE_SOLID);
+      break;
+    case STRIP_FACTORY_MODE_BREATH:
+      event_set(EVT_ID_STRIP_MODE_BREATH);
+      break;
+    case STRIP_FACTORY_MODE_CHASE:
+      event_set(EVT_ID_STRIP_MODE_CHASE);
+      break;
+    case STRIP_FACTORY_MODE_MIC:
+    default:
+      event_set(EVT_ID_STRIP_MODE_MIC);
+      break;
+  }
+}
+
+static void factory_on_button(const factory_btn_pending_t *btn)
+{
+  LOG_INFO("BTN %s -> %s", button_id_to_str(btn->id), button_event_to_str(btn->event));
+
+  switch (btn->event)
   {
     case BTN_EVENT_SINGLE_CLICK:
-      led_scene_run(LED_SCENE_ID_TRIGGER);
+      if (btn->id == BTN_ID_MODE)
+      {
+        uint8_t next = (uint8_t)(strip_scene_factory_display_get() + 1u);
+        if (next > STRIP_FACTORY_MODE_MIC)
+        {
+          next = STRIP_FACTORY_MODE_SOLID;
+        }
+        factory_strip_mode_event_set(next);
+      }
+      else if (btn->id == BTN_ID_NAV_UP)
+      {
+        if (atomizer_pwm_gear_increase())
+        {
+          LOG_INFO("Atomizer gear up -> %u%%", (unsigned)atomizer_pwm_amp_percent());
+        }
+        else
+        {
+          LOG_INFO("Atomizer already at max (%u%%)", (unsigned)atomizer_pwm_amp_percent());
+        }
+      }
+      else if (btn->id == BTN_ID_NAV_DOWN)
+      {
+        if (atomizer_pwm_gear_decrease())
+        {
+          LOG_INFO("Atomizer gear down -> %u%%", (unsigned)atomizer_pwm_amp_percent());
+        }
+        else
+        {
+          LOG_INFO("Atomizer already at min (%u%%)", (unsigned)atomizer_pwm_amp_percent());
+        }
+      }
+      else
+      {
+        led_scene_run(LED_SCENE_ID_TRIGGER);
+        strip_scene_run(STRIP_SCENE_ID_TRIGGER);
+      }
       break;
     case BTN_EVENT_DOUBLE_CLICK:
       led_scene_run(LED_SCENE_ID_PAIRING);
+      strip_scene_run(STRIP_SCENE_ID_PAIRING);
       break;
     case BTN_EVENT_LONG_PRESS:
     case BTN_EVENT_LONG_HOLD:
       led_scene_run(LED_SCENE_ID_ERROR);
+      strip_scene_run(STRIP_SCENE_ID_ERROR);
       break;
     case BTN_EVENT_LONG_HOLD_UP:
       led_scene_cancel(LED_SCENE_ID_ERROR);
-      if (id == BTN_ID_MODE && ((uint16_t)permission & (uint16_t)BTN_PERMISSION_ZONE_SWITCH) != 0u)
+      strip_scene_cancel(STRIP_SCENE_ID_ERROR);
+      if (btn->id == BTN_ID_MODE &&
+          ((uint16_t)btn->permission & (uint16_t)BTN_PERMISSION_ZONE_SWITCH) != 0u)
       {
         LOG_INFO("Boot: toggle APP slot (%s -> other), resetting...",
                  boot_slot_running_from_b() ? "B" : "A");
@@ -148,10 +252,122 @@ static void button_notify_cb(btn_id_e id, const char *name, btn_permission_e per
         }
       }
       led_scene_run(LED_SCENE_ID_SUCCESS);
+      strip_scene_run(STRIP_SCENE_ID_SUCCESS);
       break;
     default:
       break;
   }
+}
+
+static bool factory_atomizer_run_permitted(void)
+{
+  return (!s_factory_water_low) && (!s_factory_overheat_active);
+}
+
+/** 按当前水位/过温状态同步 PWM 保护锁（禁止=占空比 0，保留挡位）。 */
+static void factory_atomizer_protect_sync(void)
+{
+  const bool protect = !factory_atomizer_run_permitted();
+  const bool was_protect = atomizer_pwm_protect_active();
+
+  atomizer_pwm_protect_set(protect);
+
+  if (was_protect && !protect)
+  {
+    LOG_INFO("Atomizer PWM resumed (water OK, temperature normal), gear %u%%",
+             (unsigned)atomizer_pwm_amp_percent());
+  }
+}
+
+static void factory_atomizer_protect_poll(void)
+{
+  const uint32_t water_mv = adc_voltage_water_mv();
+  const bool water_low = (water_mv < FACTORY_WATER_PROTECT_MV);
+
+  if (water_low != s_factory_water_low)
+  {
+    s_factory_water_low = water_low;
+    if (water_low)
+    {
+      LOG_WARN("Water level low (%lu mV < %u mV), atomizer inhibited",
+               (unsigned long)water_mv, (unsigned)FACTORY_WATER_PROTECT_MV);
+    }
+    else
+    {
+      LOG_INFO("Water level OK (%lu mV)", (unsigned long)water_mv);
+    }
+  }
+
+  factory_atomizer_protect_sync();
+}
+
+/** Central handler: consume event bits from button / input / strip-mode producers. */
+static void factory_dispatch_events(void)
+{
+  for (;;)
+  {
+    if (event_is_set(EVT_ID_OVERHEAT))
+    {
+      LOG_WARN("EVT: overtemperature alarm, atomizer inhibited");
+      s_factory_overheat_active = true;
+      factory_atomizer_protect_sync();
+      led_scene_run(LED_SCENE_ID_ERROR);
+      strip_scene_run(STRIP_SCENE_ID_ERROR);
+      continue;
+    }
+
+    if (event_is_set(EVT_ID_OVERHEAT_OK))
+    {
+      LOG_INFO("EVT: overtemperature cleared (room temperature)");
+      s_factory_overheat_active = false;
+      factory_atomizer_protect_sync();
+      led_scene_cancel(LED_SCENE_ID_ERROR);
+      strip_scene_cancel(STRIP_SCENE_ID_ERROR);
+      continue;
+    }
+
+    if (event_is_set(EVT_ID_STRIP_MODE_SOLID))
+    {
+      strip_scene_factory_display_set(STRIP_FACTORY_MODE_SOLID);
+      LOG_INFO("Strip mode 1: solid");
+      continue;
+    }
+    if (event_is_set(EVT_ID_STRIP_MODE_BREATH))
+    {
+      strip_scene_factory_display_set(STRIP_FACTORY_MODE_BREATH);
+      LOG_INFO("Strip mode 2: color breath");
+      continue;
+    }
+    if (event_is_set(EVT_ID_STRIP_MODE_CHASE))
+    {
+      strip_scene_factory_display_set(STRIP_FACTORY_MODE_CHASE);
+      LOG_INFO("Strip mode 3: color chase");
+      continue;
+    }
+    if (event_is_set(EVT_ID_STRIP_MODE_MIC))
+    {
+      strip_scene_factory_display_set(STRIP_FACTORY_MODE_MIC);
+      LOG_INFO("Strip mode 4: MIC reactive");
+      continue;
+    }
+
+    if (event_is_set(EVT_ID_BUTTON))
+    {
+      factory_on_button(&s_btn_pending);
+      continue;
+    }
+
+    break;
+  }
+}
+
+static void button_notify_cb(btn_id_e id, const char *name, btn_permission_e permission, btn_event_e event)
+{
+  (void)name;
+  s_btn_pending.id = id;
+  s_btn_pending.event = event;
+  s_btn_pending.permission = permission;
+  /* EVT_ID_BUTTON is set inside button.c after this callback. */
 }
 
 static TickType_t factory_ms_to_ticks(uint32_t ms)
@@ -291,11 +507,49 @@ static void factory_init_serial_cmd_path(void)
 
 
 
+static void factory_input_notify(input_evt_e event, input_state_e state)
+{
+  if (event != INPUT_EVT_OVERHEAT)
+  {
+    return;
+  }
+
+  if (state == INPUT_EVT_CLOSE)
+  {
+    event_set(EVT_ID_OVERHEAT);
+  }
+  else
+  {
+    event_set(EVT_ID_OVERHEAT_OK);
+  }
+}
+
 static void factory_poll_services(void)
 {
+  input_schedule(factory_input_notify);
   button_schedule();
+  factory_dispatch_events();
+  factory_atomizer_protect_poll();
   led_scene_update();
+  strip_scene_update();
   uart3_cmd_task_poll();
+}
+
+static void factory_strip_init(void)
+{
+  ws2818b_status_t st;
+
+  strip_scene_init();
+  st = strip_register(&s_factory_strip, &hspi1, s_factory_strip_grb, s_factory_strip_spi,
+      STRIP_SCENE_LED_NUM, 0u);
+  if (st != WS2818B_OK)
+  {
+    LOG_ERROR("strip_register failed (%d)", (int)st);
+    return;
+  }
+  strip_scene_attach(&s_factory_strip);
+  LOG_INFO("SPI strip: Mode key cycles solid/breath/chase/MIC; UART3 cmd / other buttons override");
+  strip_scene_factory_display_set(STRIP_FACTORY_MODE_MIC);
 }
 
 void AppThreadTask(void *argument)
@@ -317,6 +571,9 @@ void StartThread(void *argument)
   /* Start watchdog feed timer after scheduler is running. */
   factory_rtos_timers_start();
 
+  /* Required for EVT_ID_STRIP_MODE_* and button path (APP uses freertos.c). */
+  event_init();
+
   if (log_init(NULL) == LOG_OK)
   {
     LOG_INFO("[FTM] Boot: factory test firmware (StartTask, UART3 cmd)");
@@ -330,7 +587,12 @@ void StartThread(void *argument)
   led_scene_init();
   led_scene_run(LED_SCENE_ID_BOOTUP);
 
+  factory_strip_init();
+
+  input_init();
   button_init(button_notify_cb);
+  atomizer_pwm_init();
+  factory_atomizer_protect_poll();
 
   for (;;)
   {

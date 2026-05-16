@@ -1,6 +1,6 @@
 /**
  * @file adc_voltage.h
- * @brief DMA 采样后的电压读数接口：ADC1 声压 PA0（DMA1 Ch1），ADC3 水位 PA1（DMA2 Ch1）。
+ * @brief ADC1 扫描 DMA：PA0 音频、PA1 水位。
  */
 
 #ifndef ADC_VOLTAGE_H
@@ -13,20 +13,30 @@ extern "C" {
 #include <stdint.h>
 
 #ifndef ADC_VOLTAGE_DMA_DEPTH
+/** 每路通道在 DMA 缓冲中的采样点数（总 HAL 长度 = DEPTH * 2）。 */
 #define ADC_VOLTAGE_DMA_DEPTH 32u
 #endif
 
-typedef enum {
-  ADC_VOLTAGE_SOUND = 0, /* ADC1 IN0 @ PA0 */
-  ADC_VOLTAGE_WATER = 1  /* ADC3 IN1 @ PA1（STM32F103xE 上 PA1 为 ADC123_IN1） */
-} adc_voltage_channel_t;
-
-/** 在 MX_ADC1_Init、MX_ADC3_Init 之后调用：校准并启动两路 DMA。 */
+/** 在 MX_ADC1_Init 之后调用：校准并启动 DMA 环形采样。 */
 void adc_voltage_init(void);
 
-uint16_t adc_voltage_avg_raw(adc_voltage_channel_t ch);
+/** PA0 / ADC1 IN0：音频（麦克风）平均 ADC 原始值，0~4095。 */
+uint16_t adc_voltage_audio_raw(void);
 
-float adc_voltage_avg_volts(adc_voltage_channel_t ch);
+/** PA1 / ADC1 IN1：水位传感器平均 ADC 原始值，0~4095。 */
+uint16_t adc_voltage_water_raw(void);
+
+/** 音频通道电压，单位 mV（基于 VDD_VALUE）。 */
+uint32_t adc_voltage_audio_mv(void);
+
+/** 水位通道电压，单位 mV（基于 VDD_VALUE）。 */
+uint32_t adc_voltage_water_mv(void);
+
+/** 音频通道电压，单位 V。 */
+float adc_voltage_audio_volts(void);
+
+/** 水位通道电压，单位 V。 */
+float adc_voltage_water_volts(void);
 
 #ifdef __cplusplus
 }
