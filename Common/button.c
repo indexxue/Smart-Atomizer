@@ -8,13 +8,11 @@
 #include "log.h"
 #endif
 
-#define BTN_NAME_WAKE           "Wake"
-#define BTN_NAME_NAV_UP         "NavUp"
+#define BTN_NAME_MODE           "Mode"
 #define BTN_NAME_NAV_DOWN       "NavDown"
-#define BTN_NAME_NAV_LEFT       "NavLeft"
-#define BTN_NAME_NAV_RIGHT      "NavRight"
+#define BTN_NAME_NAV_UP         "NavUp"
 
-#define BTN_NUM                5
+#define BTN_NUM                3
 
 typedef struct
 {
@@ -122,12 +120,19 @@ static void button_flex_init(button_list_t *list)
     list->flex.pressed_logic_level = (list->active_level ? 1u : 0u);
     list->flex.debounce_tick = FLEX_MS_TO_SCAN_CNT(80);
     list->flex.max_multiple_clicks_interval = FLEX_MS_TO_SCAN_CNT(600);
-    list->flex.short_press_start_tick = FLEX_MS_TO_SCAN_CNT(2000);
-    list->flex.long_press_start_tick = FLEX_MS_TO_SCAN_CNT(10000);
-    list->flex.long_hold_start_tick = FLEX_MS_TO_SCAN_CNT(11000);
+    list->flex.short_press_start_tick = FLEX_MS_TO_SCAN_CNT(300);
+    list->flex.long_press_start_tick = FLEX_MS_TO_SCAN_CNT(2500);
+    list->flex.long_hold_start_tick = FLEX_MS_TO_SCAN_CNT(2600);
     list->flex.user_data = list;
 
     flex_button_register(&list->flex);
+
+    if (list->id == BTN_ID_MODE)
+    {
+        /* Zone switch: require >= 5 s hold (see flex tick vs button_schedule period). */
+        list->flex.long_press_start_tick = FLEX_MS_TO_SCAN_CNT(5000);
+        list->flex.long_hold_start_tick = FLEX_MS_TO_SCAN_CNT(5200);
+    }
 }
 
 static void button_gpio_init(void)
@@ -151,44 +156,30 @@ static void button_config(void)
 {
     button_list_t *list = s_button_list;
 
-    /* PA0: only FTM — long-hold-up handled in app to switch firmware slot */
-    list[0].id = BTN_ID_WAKE;
-    list[0].name = BTN_NAME_WAKE;
-    list[0].port = GPIOA;
-    list[0].pin = GPIO_PIN_0;
+    /* PC6=Mode: short tap = mode; long hold >=5s then release = zone (BTN_PERMISSION_ZONE_SWITCH). */
+    list[0].id = BTN_ID_MODE;
+    list[0].name = BTN_NAME_MODE;
+    list[0].port = GPIOC;
+    list[0].pin = GPIO_PIN_6;
     list[0].active_level = 0;
-    list[0].permission = (uint16_t)BTN_PERMISSION_FTM;
+    list[0].permission = (uint16_t)(BTN_PERMISSION_CONFIRM | BTN_PERMISSION_ZONE_SWITCH | BTN_PERMISSION_RESET |
+                                      BTN_PERMISSION_PAIR);
 
-    /* User nav: PC5=上, PC4=下, PA7=左+确定, PA6=右+返回 — no FTM */
-    list[1].id = BTN_ID_NAV_UP;
-    list[1].name = BTN_NAME_NAV_UP;
+    /* PC7=减少 */
+    list[1].id = BTN_ID_NAV_DOWN;
+    list[1].name = BTN_NAME_NAV_DOWN;
     list[1].port = GPIOC;
-    list[1].pin = GPIO_PIN_4;
+    list[1].pin = GPIO_PIN_7;
     list[1].active_level = 0;
-    list[1].permission = (uint16_t)(BTN_PERMISSION_UP | BTN_PERMISSION_RESET | BTN_PERMISSION_PAIR);
+    list[1].permission = (uint16_t)(BTN_PERMISSION_DOWN | BTN_PERMISSION_RESET | BTN_PERMISSION_PAIR);
 
-    list[2].id = BTN_ID_NAV_DOWN;
-    list[2].name = BTN_NAME_NAV_DOWN;
+    /* PC8=增加 */
+    list[2].id = BTN_ID_NAV_UP;
+    list[2].name = BTN_NAME_NAV_UP;
     list[2].port = GPIOC;
-    list[2].pin = GPIO_PIN_5;
+    list[2].pin = GPIO_PIN_8;
     list[2].active_level = 0;
-    list[2].permission = (uint16_t)(BTN_PERMISSION_DOWN | BTN_PERMISSION_RESET | BTN_PERMISSION_PAIR);
-
-    list[3].id = BTN_ID_NAV_LEFT;
-    list[3].name = BTN_NAME_NAV_LEFT;
-    list[3].port = GPIOA;
-    list[3].pin = GPIO_PIN_7;
-    list[3].active_level = 0;
-    list[3].permission =
-        (uint16_t)(BTN_PERMISSION_LEFT | BTN_PERMISSION_CONFIRM | BTN_PERMISSION_RESET | BTN_PERMISSION_PAIR);
-
-    list[4].id = BTN_ID_NAV_RIGHT;
-    list[4].name = BTN_NAME_NAV_RIGHT;
-    list[4].port = GPIOA;
-    list[4].pin = GPIO_PIN_6;
-    list[4].active_level = 0;
-    list[4].permission =
-        (uint16_t)(BTN_PERMISSION_RIGHT | BTN_PERMISSION_BACK | BTN_PERMISSION_RESET | BTN_PERMISSION_PAIR);
+    list[2].permission = (uint16_t)(BTN_PERMISSION_UP | BTN_PERMISSION_RESET | BTN_PERMISSION_PAIR);
 
     self.num = BTN_NUM;
     self.list = s_button_list;
@@ -200,7 +191,6 @@ void button_init(btn_notify_t notify)
     button_config();
     self.notify = notify;
 
-    __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
     button_gpio_init();
 
@@ -250,16 +240,12 @@ const char *button_id_to_str(btn_id_e id)
 {
     switch (id)
     {
-        case BTN_ID_WAKE:
-            return "WAKE";
+        case BTN_ID_MODE:
+            return "MODE";
         case BTN_ID_NAV_UP:
             return "NAV_UP";
         case BTN_ID_NAV_DOWN:
             return "NAV_DOWN";
-        case BTN_ID_NAV_LEFT:
-            return "NAV_LEFT";
-        case BTN_ID_NAV_RIGHT:
-            return "NAV_RIGHT";
         default:
             return "UNKNOWN";
     }

@@ -19,11 +19,11 @@ static int flash_erase_one_page(uint32_t page_addr)
     return (HAL_FLASHEx_Erase(&erase, &page_error) == HAL_OK) ? 0 : -1;
 }
 
-bool boot_slot_request_factory(void)
+static bool boot_slot_program_u32(uint32_t val)
 {
     volatile uint32_t *p = (volatile uint32_t *)BOOT_SLOT_FLAG_ADDR;
 
-    if (*p == BOOT_SLOT_FLAG_FACTORY)
+    if (*p == val)
     {
         return true;
     }
@@ -34,7 +34,6 @@ bool boot_slot_request_factory(void)
     }
 
     uint32_t addr = BOOT_SLOT_FLAG_ADDR;
-    uint32_t val = BOOT_SLOT_FLAG_FACTORY;
     uint16_t hw0 = (uint16_t)(val & 0xFFFFU);
     uint16_t hw1 = (uint16_t)((val >> 16) & 0xFFFFU);
 
@@ -58,6 +57,16 @@ bool boot_slot_request_factory(void)
     return true;
 }
 
+bool boot_slot_request_factory(void)
+{
+    return boot_slot_program_u32(BOOT_SLOT_FLAG_FACTORY);
+}
+
+bool boot_slot_request_app_b(void)
+{
+    return boot_slot_program_u32(BOOT_SLOT_FLAG_APP_B);
+}
+
 bool boot_slot_request_app_a(void)
 {
     if (HAL_FLASH_Unlock() != HAL_OK)
@@ -79,4 +88,25 @@ void boot_slot_system_reset(void)
 {
     __disable_irq();
     NVIC_SystemReset();
+}
+
+bool boot_slot_running_from_b(void)
+{
+    return (SCB->VTOR == BOOT_SLOT_APP_B_VTOR);
+}
+
+uint32_t boot_slot_flag_peek(void)
+{
+    return *(volatile const uint32_t *)BOOT_SLOT_FLAG_ADDR;
+}
+
+bool boot_slot_toggle_partition_and_reset(void)
+{
+    bool ok = boot_slot_running_from_b() ? boot_slot_request_app_a() : boot_slot_request_app_b();
+    if (!ok)
+    {
+        return false;
+    }
+    boot_slot_system_reset();
+    return true;
 }

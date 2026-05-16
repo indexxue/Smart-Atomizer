@@ -110,7 +110,8 @@ int main(void)
 //  HAL_Delay(500);
 
 	uint32_t target_addr;
-	if (upgrade_flag == BOOT_SLOT_FLAG_FACTORY && IsAppValid(APP_B_ADDR)) {
+	if ((upgrade_flag == BOOT_SLOT_FLAG_FACTORY || upgrade_flag == BOOT_SLOT_FLAG_APP_B) &&
+	    IsAppValid(APP_B_ADDR)) {
 			target_addr = APP_B_ADDR;
 	} else if (IsAppValid(APP_A_ADDR)) {
 			target_addr = APP_A_ADDR;

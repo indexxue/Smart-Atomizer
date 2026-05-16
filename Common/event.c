@@ -172,3 +172,18 @@ void event_schedule(void)
 
     xSemaphoreTake(self->semaphore, portMAX_DELAY);
 }
+
+void event_wait_timeout_ms(uint32_t ms)
+{
+    if (NULL == self)
+    {
+        return;
+    }
+
+    TickType_t ticks = pdMS_TO_TICKS(ms);
+    if (ticks == 0U)
+    {
+        ticks = 1U;
+    }
+    (void)xSemaphoreTake(self->semaphore, ticks);
+}

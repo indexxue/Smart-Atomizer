@@ -16,11 +16,9 @@ typedef enum
 
 typedef enum
 {
-    BTN_ID_WAKE = 0,
-    BTN_ID_NAV_UP,
+    BTN_ID_MODE = 0,
     BTN_ID_NAV_DOWN,
-    BTN_ID_NAV_LEFT,
-    BTN_ID_NAV_RIGHT,
+    BTN_ID_NAV_UP,
     BTN_ID_MAX_NUMBER,
 } btn_id_e;
 
@@ -52,6 +50,8 @@ typedef enum
     BTN_PERMISSION_RIGHT = (1 << 9),
     BTN_PERMISSION_CONFIRM = (1 << 10),
     BTN_PERMISSION_BACK = (1 << 11),
+    /** Mode (PC6) long-press: spray / UI zone toggle (handled in application callback). */
+    BTN_PERMISSION_ZONE_SWITCH = (1 << 12),
 } btn_permission_e;
 
 typedef void (*btn_notify_t)(btn_id_e id, const char *name, btn_permission_e permission, btn_event_e event);

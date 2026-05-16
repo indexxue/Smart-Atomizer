@@ -2,7 +2,6 @@
 #include "task.h"
 #include "main.h"
 #include "cmsis_os.h"
-#include "boot_slot.h"
 #include "button.h"
 #include "event.h"
 #include "iwdg.h"
@@ -12,6 +11,7 @@
 #include "nvs.h"
 #include "proto.h"
 #include "ty_link.h"
+#include "boot_slot.h"
 
 #define APP_IWDG_FEED_MS 200U
 
@@ -57,7 +57,11 @@ void StartDefaultTask(void *argument)
     (void)osTimerStart(s_iwdg_tmr, (uint32_t)pdMS_TO_TICKS(APP_IWDG_FEED_MS));
   }
 
-  (void)log_init(NULL);
+  if (log_init(NULL) == LOG_OK)
+  {
+    LOG_INFO("[APP] Boot: application firmware (app_start task)");
+  }
+
   event_init();
   nvs_init();
   led_scene_init();
@@ -83,7 +87,9 @@ static void app_event_loop(void)
 {
   for (;;)
   {
-    event_schedule();
+    event_wait_timeout_ms(20U);
+    button_schedule();
+    led_scene_update();
     proto_app_dispatch_from_event_loop();
   }
 }
@@ -108,19 +114,17 @@ static void app_button_notify(btn_id_e id, const char *name, btn_permission_e pe
       led_scene_run(LED_SCENE_ID_ERROR);
       break;
     case BTN_EVENT_LONG_HOLD_UP:
-      if (id == BTN_ID_WAKE && ((uint16_t)permission & (uint16_t)BTN_PERMISSION_FTM) != 0u)
+      led_scene_cancel(LED_SCENE_ID_ERROR);
+      if (id == BTN_ID_MODE && ((uint16_t)permission & (uint16_t)BTN_PERMISSION_ZONE_SWITCH) != 0u)
       {
-        LOG_INFO("Boot: APP-A requested, resetting");
-        if (boot_slot_request_app_a())
+        LOG_INFO("Boot: toggle APP slot (%s -> other), resetting...",
+                 boot_slot_running_from_b() ? "B" : "A");
+        if (!boot_slot_toggle_partition_and_reset())
         {
-          boot_slot_system_reset();
+          LOG_ERROR("Boot: slot flash failed (stay on current image)");
         }
       }
-      else
-      {
-        led_scene_cancel(LED_SCENE_ID_ERROR);
-        led_scene_run(LED_SCENE_ID_SUCCESS);
-      }
+      led_scene_run(LED_SCENE_ID_SUCCESS);
       break;
     default:
       break;

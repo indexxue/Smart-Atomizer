@@ -10,6 +10,7 @@
 #include <stdio.h>
 
 #include "log.h"
+#include "boot_slot.h"
 
 #define NVS_KEY_REBOOT_COUNT      "rcount"
 #define NVS_KEY_FRAME_COUNT       "fcount"
@@ -779,12 +780,19 @@ nvs_status_t nvs_delete(nvs_handle_t *nvs, const char *key)
 static void nvs_print_boot_info(void)
 {
     uint32_t reboot_count = nvs_reboot_count_get();
+    uint32_t slot_flag = boot_slot_flag_peek();
     char sn_buf[NVS_SN_SIZE];
     char hw_buf[NVS_HW_VERSION_SIZE];
     char region_buf[NVS_REGION_SIZE];
 
     LOG_INFO("--- NVS boot ---");
     LOG_INFO("  reboot_count: %lu", (unsigned long)reboot_count);
+    LOG_INFO("  flash_slot_flag: 0x%08lX", (unsigned long)slot_flag);
+    LOG_INFO("  exec_image: %s", boot_slot_running_from_b() ? "B" : "A");
+    if ((slot_flag == BOOT_SLOT_FLAG_APP_B || slot_flag == BOOT_SLOT_FLAG_FACTORY) && !boot_slot_running_from_b())
+    {
+        LOG_WARN("  slot_mismatch: flag selects APP-B but CPU is on A (B@0x08020000 invalid/empty, or Bootloader lacks APP_B flag handling)");
+    }
     if (nvs_sn_get(sn_buf))
         LOG_INFO("  sn: %s", sn_buf);
     if (nvs_hw_version_get(hw_buf))

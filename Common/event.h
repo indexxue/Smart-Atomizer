@@ -32,6 +32,8 @@ void event_signal_from_isr(void);
 bool event_is_set(event_id_e id);
 void event_clear(event_id_e id);
 void event_schedule(void);
+/** Same wait queue as event_schedule(), but returns after timeout for periodic work (e.g. button scan). */
+void event_wait_timeout_ms(uint32_t ms);
 
 #ifdef __cplusplus
 }

@@ -471,25 +471,17 @@ static void cmd_btn(int argc, const char *argv[])
     }
 
     btn_id_e id = BTN_ID_MAX_NUMBER;
-    if (strcmp(argv[1], "wake") == 0)
+    if (strcmp(argv[1], "mode") == 0 || strcmp(argv[1], "wake") == 0)
     {
-        id = BTN_ID_WAKE;
+        id = BTN_ID_MODE;
     }
-    else if (strcmp(argv[1], "up") == 0)
+    else if (strcmp(argv[1], "up") == 0 || strcmp(argv[1], "inc") == 0)
     {
         id = BTN_ID_NAV_UP;
     }
-    else if (strcmp(argv[1], "down") == 0)
+    else if (strcmp(argv[1], "down") == 0 || strcmp(argv[1], "dec") == 0)
     {
         id = BTN_ID_NAV_DOWN;
-    }
-    else if (strcmp(argv[1], "left") == 0)
-    {
-        id = BTN_ID_NAV_LEFT;
-    }
-    else if (strcmp(argv[1], "right") == 0)
-    {
-        id = BTN_ID_NAV_RIGHT;
     }
     else
     {

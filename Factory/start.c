@@ -17,8 +17,8 @@
 #include "iwdg.h"
 #include "serial_cmd.h"
 #include "proto.h"
-#include "boot_slot.h"
 #include "queue.h"
+#include "boot_slot.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -137,19 +137,17 @@ static void button_notify_cb(btn_id_e id, const char *name, btn_permission_e per
       led_scene_run(LED_SCENE_ID_ERROR);
       break;
     case BTN_EVENT_LONG_HOLD_UP:
-      if (id == BTN_ID_WAKE && ((uint16_t)permission & (uint16_t)BTN_PERMISSION_FTM) != 0u)
+      led_scene_cancel(LED_SCENE_ID_ERROR);
+      if (id == BTN_ID_MODE && ((uint16_t)permission & (uint16_t)BTN_PERMISSION_ZONE_SWITCH) != 0u)
       {
-        LOG_INFO("Boot: APP-A requested, resetting");
-        if (boot_slot_request_app_a())
+        LOG_INFO("Boot: toggle APP slot (%s -> other), resetting...",
+                 boot_slot_running_from_b() ? "B" : "A");
+        if (!boot_slot_toggle_partition_and_reset())
         {
-          boot_slot_system_reset();
+          LOG_ERROR("Boot: slot flash failed (stay on current image)");
         }
       }
-      else
-      {
-        led_scene_cancel(LED_SCENE_ID_ERROR);
-        led_scene_run(LED_SCENE_ID_SUCCESS);
-      }
+      led_scene_run(LED_SCENE_ID_SUCCESS);
       break;
     default:
       break;
@@ -321,7 +319,7 @@ void StartThread(void *argument)
 
   if (log_init(NULL) == LOG_OK)
   {
-    LOG_INFO("=== Factory: Log + Button + LED + UART3 cmd ===");
+    LOG_INFO("[FTM] Boot: factory test firmware (StartTask, UART3 cmd)");
   }
 
   nvs_init();
