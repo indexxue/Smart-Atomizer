@@ -431,6 +431,16 @@ void strip_scene_mic_reset(void)
     s_mic_fill_smooth = 0u;
 }
 
+uint8_t strip_scene_mic_level_percent(void)
+{
+    if (!strip_scene_mic_is_active())
+    {
+        return 0u;
+    }
+
+    return (uint8_t)(((uint32_t)s_mic_fill_smooth * 100u) / 1020u);
+}
+
 static bool strip_scene_mic_is_active(void)
 {
     return s_scene.initialized &&

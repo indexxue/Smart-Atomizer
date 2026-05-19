@@ -21,6 +21,8 @@ static const uint8_t s_gear_amp_pct[ATOMIZER_PWM_GEAR_COUNT] = {0u, 30u, 50u, 70
 static uint8_t s_gear_idx;
 static uint8_t s_running;
 static uint8_t s_protect;
+static uint8_t s_rhythm_enable;
+static uint8_t s_rhythm_level_pct;
 
 static void atomizer_pwm_stop(void)
 {
@@ -31,9 +33,21 @@ static void atomizer_pwm_stop(void)
   }
 }
 
+static uint8_t atomizer_pwm_effective_amp(void)
+{
+  uint8_t amp = s_gear_amp_pct[s_gear_idx];
+
+  if (s_rhythm_enable != 0u && amp > 0u)
+  {
+    amp = (uint8_t)(((uint32_t)amp * (uint32_t)s_rhythm_level_pct) / 100u);
+  }
+
+  return amp;
+}
+
 static void atomizer_pwm_apply(void)
 {
-  const uint8_t amp = s_gear_amp_pct[s_gear_idx];
+  const uint8_t amp = atomizer_pwm_effective_amp();
 
   atomizer_pwm_stop();
 
@@ -70,6 +84,8 @@ void atomizer_pwm_init(void)
   s_gear_idx = 0u;
   s_running = 0u;
   s_protect = 0u;
+  s_rhythm_enable = 0u;
+  s_rhythm_level_pct = 0u;
   atomizer_pwm_apply();
 }
 
@@ -120,7 +136,61 @@ uint8_t atomizer_pwm_gear_index(void)
   return s_gear_idx;
 }
 
+void atomizer_pwm_set_gear_index(uint8_t gear)
+{
+  if (gear >= ATOMIZER_PWM_GEAR_COUNT)
+  {
+    gear = (uint8_t)(ATOMIZER_PWM_GEAR_COUNT - 1u);
+  }
+
+  if (s_gear_idx == gear)
+  {
+    return;
+  }
+
+  s_gear_idx = gear;
+  atomizer_pwm_apply();
+}
+
 uint8_t atomizer_pwm_amp_percent(void)
 {
+  if (s_rhythm_enable != 0u)
+  {
+    return atomizer_pwm_effective_amp();
+  }
+
   return s_gear_amp_pct[s_gear_idx];
+}
+
+void atomizer_pwm_rhythm_set(bool enable)
+{
+  const uint8_t next = enable ? 1u : 0u;
+
+  if (s_rhythm_enable == next)
+  {
+    return;
+  }
+
+  s_rhythm_enable = next;
+  if (next == 0u)
+  {
+    s_rhythm_level_pct = 0u;
+  }
+  atomizer_pwm_apply();
+}
+
+void atomizer_pwm_rhythm_update(uint8_t level_pct)
+{
+  if (level_pct > 100u)
+  {
+    level_pct = 100u;
+  }
+
+  if (s_rhythm_enable == 0u || s_rhythm_level_pct == level_pct)
+  {
+    return;
+  }
+
+  s_rhythm_level_pct = level_pct;
+  atomizer_pwm_apply();
 }

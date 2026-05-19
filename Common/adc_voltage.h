@@ -38,6 +38,11 @@ float adc_voltage_audio_volts(void);
 /** 水位通道电压，单位 V。 */
 float adc_voltage_water_volts(void);
 
+/**
+ * 水位百分比 0–100（分段线性，标定：25%@raw1600、50%@1900、75%@2050、100%@2200）。
+ */
+uint8_t adc_voltage_water_level_pct(void);
+
 #ifdef __cplusplus
 }
 #endif

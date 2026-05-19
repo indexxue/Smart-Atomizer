@@ -26,6 +26,9 @@ bool atomizer_pwm_gear_decrease(void);
 /** 当前挡位索引 0=0% … 3=70%。 */
 uint8_t atomizer_pwm_gear_index(void);
 
+/** 直接设定挡位 0..3（协议 0x21 humidifier_level）；越界钳位。 */
+void atomizer_pwm_set_gear_index(uint8_t gear);
+
 /** 当前幅度百分比 0/30/50/70。 */
 uint8_t atomizer_pwm_amp_percent(void);
 
@@ -34,6 +37,12 @@ void atomizer_pwm_protect_set(bool protect);
 
 /** 是否处于保护锁（输出被强制为 0）。 */
 bool atomizer_pwm_protect_active(void);
+
+/** 律动模式：在挡位幅度内按 @p level_pct (0..100) 缩放占空比；关闭后恢复固定挡位输出。 */
+void atomizer_pwm_rhythm_set(bool enable);
+
+/** 更新律动电平（仅 enable 时生效）；与挡位幅度相乘后输出。 */
+void atomizer_pwm_rhythm_update(uint8_t level_pct);
 
 #ifdef __cplusplus
 }

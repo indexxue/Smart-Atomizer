@@ -154,6 +154,9 @@ void strip_scene_cancel(strip_scene_id_e id);
 /** 重置 MIC 场景的直流跟踪与峰值（进入 @c STRIP_SCENE_ID_MIC_REACTIVE 时自动调用）。 */
 void strip_scene_mic_reset(void);
 
+/** MIC 律动平滑电平 0..100（与灯带 VU 同源；场景未运行或未发声时为 0）。 */
+uint8_t strip_scene_mic_level_percent(void);
+
 /** Factory 灯带展示模式 1..4：常亮 / 呼吸 / 流水 / MIC(电压)。 */
 #define STRIP_FACTORY_MODE_SOLID   1u
 #define STRIP_FACTORY_MODE_BREATH  2u

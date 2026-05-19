@@ -77,3 +77,39 @@ float adc_voltage_water_volts(void)
 {
   return (float)adc_voltage_water_mv() * 0.001f;
 }
+
+uint8_t adc_voltage_water_level_pct(void)
+{
+  const uint32_t raw = (uint32_t)adc_voltage_water_raw();
+  uint32_t pct;
+
+  /*
+   * 实测标定（ADC raw 越高水位越高）：
+   *   25% @ 1600，50% @ 1900，75% @ 2050，100% @ 2200
+   * 低段 1300–1900：斜率 1/12 %/raw；高段 1900–2200：斜率 1/6 %/raw。
+   */
+  if (raw <= 1300u)
+  {
+    return 0u;
+  }
+
+  if (raw <= 1900u)
+  {
+    pct = (raw - 1300u) / 12u;
+  }
+  else if (raw >= 2200u)
+  {
+    return 100u;
+  }
+  else
+  {
+    pct = 50u + (raw - 1900u) / 6u;
+  }
+
+  if (pct > 100u)
+  {
+    pct = 100u;
+  }
+
+  return (uint8_t)pct;
+}

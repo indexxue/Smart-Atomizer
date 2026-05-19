@@ -671,6 +671,11 @@
               <FileType>1</FileType>
               <FilePath>..\cbb\sht20.c</FilePath>
             </File>
+            <File>
+              <FileName>dht22.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\dht22.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -750,6 +755,11 @@
               <FileName>adc_voltage.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\adc_voltage.c</FilePath>
+            </File>
+            <File>
+              <FileName>humidity.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\humidity.c</FilePath>
             </File>
             <File>
               <FileName>atomizer_pwm.c</FileName>
@@ -1708,6 +1718,11 @@
               <FileType>1</FileType>
               <FilePath>..\cbb\sht20.c</FilePath>
             </File>
+            <File>
+              <FileName>dht22.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\dht22.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1787,6 +1802,11 @@
               <FileName>adc_voltage.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\adc_voltage.c</FilePath>
+            </File>
+            <File>
+              <FileName>humidity.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\humidity.c</FilePath>
             </File>
             <File>
               <FileName>atomizer_pwm.c</FileName>
@@ -2763,6 +2783,11 @@
               <FileType>1</FileType>
               <FilePath>..\cbb\sht20.c</FilePath>
             </File>
+            <File>
+              <FileName>dht22.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\cbb\dht22.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -2842,6 +2867,11 @@
               <FileName>adc_voltage.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\adc_voltage.c</FilePath>
+            </File>
+            <File>
+              <FileName>humidity.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\humidity.c</FilePath>
             </File>
             <File>
               <FileName>atomizer_pwm.c</FileName>
