@@ -1,3 +1,5 @@
+视频预览:
+【STM32F103RCT6的智能雾化器开源项目】 https://www.bilibili.com/video/BV11iYS6qE1U/
 # STM32F103RCT6：Flash 分区与烧录说明
 
 面向固件开发与生产烧录：说明 256KB Flash 上的 Bootloader / 双 APP / NVS 布局、Keil 分散加载与烧录注意点。分区示意图见仓库内 `flash_partition`。
